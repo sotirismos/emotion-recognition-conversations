@@ -5,6 +5,7 @@
 import os
 import pandas as pd
 import logging
+from datetime import datetime
 #import argparse
 
 def aggregate_raw(paths, valid_pids):
@@ -13,8 +14,8 @@ def aggregate_raw(paths, valid_pids):
     Aggregate raw data files by participant IDs and return a dict.
     Args:
         paths (dict of str: paths to K-EmoCon dataset files): requires,
-               e4_dir (str): path to a directory of raw Empatica E4 data files saved as CSV files
-               h7_dir (str): path to a directory of raw Polar H7 data files saved as CSV files
+                   e4_dir (str): path to a directory of raw Empatica E4 data files saved as CSV files
+                   h7_dir (str): path to a directory of raw Polar H7 data files saved as CSV files
                valid_pids (list of int): a list containing valid participant IDs
     Returns:
                pid_to_raw_df (dict of int: pandas DataFrame): maps participant IDs to DataFrames containing raw data.
@@ -50,7 +51,7 @@ def aggregate_raw(paths, valid_pids):
             except Exception as err:
                 logger.warning(f'Following exception occurred while processing {filekey}: {err}')
 
-    # store raw h7 data (stores only the Polar HR raw DataFrame) 
+    # store raw h7 data (stores only the Polar HR) (as ECG) 
     for pid in valid_pids:
         # get path to h7 data file
         filepath = os.path.join(h7_dir, str(pid), 'Polar_HR.csv')
@@ -66,13 +67,83 @@ def aggregate_raw(paths, valid_pids):
     return pid_to_raw_df
 
 
+def get_baseline_and_debate(paths, valid_pids, filetypes, pid_to_raw_df):
+    
+    """
+    Split aggregated raw data files into baseline and debate dataframes.
+    Args:
+        paths (dict of str: paths to K-EmoCon dataset files): requires,
+                   e4_dir (str): path to a directory of raw Empatica E4 data files saved as CSV files
+                   h7_dir (str): path to a directory of raw Polar H7 data files saved as CSV files
+                   subjects_info_path (str): csv file containing baseline and debate(start, end) times per pid as csv file
+               valid_pids (list of int)
+               filetypes (list of str) (3-axis acceleration excluded)
+               pid_to_raw_df (dict of int: pandas DataFrame): maps participant IDs to DataFrames containing raw data
+    Returns:
+        pid_to_baseline_raw (dict of int: (dict of str: pandas Series))
+        pid_to_debate_raw (dict of int: (dict of str: pandas Series))
+    """
+    
+    logger = logging.getLogger('default')
+    subject_info_table = pd.read_csv(paths['subjects_info_path'], index_col='pid')
+    pid_to_baseline_raw = {pid:dict() for pid in valid_pids}
+    pid_to_debate_raw = {pid:dict() for pid in valid_pids}
+
+    # for each participant
+    for pid in valid_pids:
+        print('-' * 80)
+        # get session info and timestamps
+        subject_info = subject_info_table.loc[subject_info_table.index == pid]
+        init_time, start_time, end_time = tuple(subject_info[['initTime', 'startTime', 'endTime']].to_numpy()[0]) # selects row and convets it to a NumPy array
+
+        # get baseline interval
+        baseline_td = 2 * 60 * 1e3  # 2 minutes (120s) in milliseconds
+        baseline_start, baseline_end = init_time, init_time + baseline_td
+        
+        # for each filetype
+        for filetype in filetypes:
+            filekey = f'{pid}/{filetype}'
+            try:
+                data = pid_to_raw_df[filekey]
+            except KeyError as err:
+                logger.warning(f'Following exception occurred: {err}')
+                continue
+
+            # get baseline and debate portions of data
+            baseline = data.loc[lambda x: (x.timestamp >= baseline_start) & (x.timestamp < baseline_end)]
+            debate = data.loc[lambda x: (x.timestamp >= start_time) & (x.timestamp < end_time)]
+
+            # skip the process if debate data is missing
+            if debate.empty:
+                logger.warning(f'Debate data missing for {filekey}, skipped')
+                continue
+            else:
+                # try storing data with corresponding filekeys and printing extra information
+                debate_len = datetime.fromtimestamp(max(debate.timestamp) // 1e3) - datetime.fromtimestamp(min(debate.timestamp) // 1e3)
+                pid_to_debate_raw[pid][filetype] = debate.set_index('timestamp').value  # is a series
+
+                # however, baseline data might be missing, so take care of that
+                try:
+                    baseline_len = datetime.fromtimestamp(max(baseline.timestamp) // 1e3) - datetime.fromtimestamp(min(baseline.timestamp) // 1e3)
+                    pid_to_baseline_raw[pid][filetype] = baseline.set_index('timestamp').value  # is a series
+                    print(f'For {filekey}:\t baseline - {baseline_len}: {len(baseline):5} \t|\t debate - {debate_len}: {len(debate):5}')
+                except ValueError:
+                    print(f'WARNING - Baseline data missing for {filekey} \t|\t debate - {debate_len}: {len(debate):5}')
+
+    print('-' * 80)
+    return pid_to_baseline_raw, pid_to_debate_raw
+
+
+
 PATHS = {
         'e4_dir': (r'C:\Users\sotir\Documents\thesis\Dataset\e4_data'),
         'h7_dir': (r'C:\Users\sotir\Documents\thesis\Dataset\neurosky_polar_data'),
+        'subjects_info_path':(r'C:\Users\sotir\Documents\thesis\Dataset\metadata\subjects.csv'),
         }
 
 VALIDS = [1, 4, 5, 8, 9, 10, 11, 13, 14, 15, 16, 19, 22, 23, 24, 25, 26, 27, 28, 31, 32]
-FILETYPES = ['bvp', 'eda', 'hr', 'ibi', 'temp', 'ecg']
+FILETYPES = ['bvp', 'eda', 'hr', 'ibi', 'temp', 'ecg']                        # 3-axis acceleration is excluded
 
 pid_to_raw_df = aggregate_raw(PATHS, VALIDS)
+pid_to_baseline_raw, pid_to_debate_raw = get_baseline_and_debate(PATHS, VALIDS, FILETYPES, pid_to_raw_df) 
 
