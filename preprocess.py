@@ -6,6 +6,8 @@ import os
 import pandas as pd
 import logging
 from datetime import datetime
+import numpy as np
+import json
 #import argparse
 
 def aggregate_raw(paths, valid_pids):
@@ -134,16 +136,45 @@ def get_baseline_and_debate(paths, valid_pids, filetypes, pid_to_raw_df):
     return pid_to_baseline_raw, pid_to_debate_raw
 
 
+def baseline_to_json(paths, pid_to_baseline_raw):
+    save_dir = paths['baseline_dir']
+    # create a new directory if there isn't one already
+    os.makedirs(save_dir, exist_ok=True)
+
+    # for each participant
+    for pid, baseline in pid_to_baseline_raw.items():
+
+        # resample and interpolate ECG signals as they have duplicate entries while the intended frequency of ECG is 1Hz
+        if 'ecg' in baseline.keys():
+            ecg = baseline['ecg']
+            ecg.index = pd.DatetimeIndex(ecg.index * 1e6)
+            ecg = ecg.resample('1S').mean().interpolate(method='time')
+            ecg.index = ecg.index.astype(np.int64) // 1e6
+            baseline['ecg'] = ecg
+
+        # convert sig values to list
+        baseline = {sigtype: sig.values.tolist() for sigtype, sig in baseline.items() if sigtype in ['bvp', 'eda', 'temp', 'ecg']}
+
+        # save baseline as json file
+        savepath = os.path.join(save_dir, f'p{pid:02d}.json')
+        with open(savepath, 'w') as f:
+            json.dump(baseline, f, sort_keys=True, indent=4)
+
+    return
+
 
 PATHS = {
-        'e4_dir': (r'C:\Users\sotir\Documents\thesis\Dataset\e4_data'),
-        'h7_dir': (r'C:\Users\sotir\Documents\thesis\Dataset\neurosky_polar_data'),
-        'subjects_info_path':(r'C:\Users\sotir\Documents\thesis\Dataset\metadata\subjects.csv'),
+        'e4_dir': (r'C:\Users\sotir\Documents\thesis\dataset\e4_data'),
+        'h7_dir': (r'C:\Users\sotir\Documents\thesis\dataset\neurosky_polar_data'),
+        'subjects_info_path':(r'C:\Users\sotir\Documents\thesis\dataset\metadata\subjects.csv'),
+        'baseline_dir': (r'C:\Users\sotir\Documents\thesis\baseline')
         }
 
 VALIDS = [1, 4, 5, 8, 9, 10, 11, 13, 14, 15, 16, 19, 22, 23, 24, 25, 26, 27, 28, 31, 32]
 FILETYPES = ['bvp', 'eda', 'hr', 'ibi', 'temp', 'ecg']                        # 3-axis acceleration is excluded
 
 pid_to_raw_df = aggregate_raw(PATHS, VALIDS)
-pid_to_baseline_raw, pid_to_debate_raw = get_baseline_and_debate(PATHS, VALIDS, FILETYPES, pid_to_raw_df) 
+pid_to_baseline_raw, pid_to_debate_raw = get_baseline_and_debate(PATHS, VALIDS, FILETYPES, pid_to_raw_df)   
+baseline_to_json(PATHS, pid_to_baseline_raw)  
+     
 
