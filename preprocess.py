@@ -8,6 +8,7 @@ import logging
 from datetime import datetime
 import numpy as np
 import json
+from collections import namedtuple
 #import argparse
 
 def aggregate_raw(paths, valid_pids):
@@ -163,11 +164,128 @@ def baseline_to_json(paths, pid_to_baseline_raw):
     return
 
 
+def debate_segments_to_json(paths, valid_pids, filetypes, pid_to_debate_raw):
+    subject_info_table = pd.read_csv(paths['subjects_info_path'], index_col='pid')
+    Ratings = namedtuple('Ratings', ['values', 'len'])
+    save_dir = paths['segments_dir']
+
+    # for each participant:
+    print('-' * 100)
+    print(f'{"pid"}\t{"debate_len":>10}\t{"sig_len":>10}\t{"s_len":>10}\t{"p_len":>10}\t{"e_len":>10}\t{"num_seg":>10}')
+    for pid in valid_pids:
+        os.makedirs(os.path.join(save_dir, str(pid)), exist_ok=True)
+        signals = dict()
+
+        # get session info and timestamps
+        subject_info = subject_info_table.loc[subject_info_table.index == pid]
+        debate_start, debate_end = tuple(subject_info[['startTime', 'endTime']].values[0])
+        debate_len = debate_end - debate_start
+        
+        # load debate data and self/partner/external annotation files
+        debate = pid_to_debate_raw[pid]
+        ratings = {
+            's': pd.read_csv(os.path.join(paths['self_ratings_dir'], f'P{pid}.self.csv')),
+            'p': pd.read_csv(os.path.join(paths['partner_ratings_dir'], f'P{pid}.partner.csv')),
+            'e': pd.read_csv(os.path.join(paths['external_ratings_dir'], f'P{pid}.external.csv'))
+        }
+
+        # save ratings information as (annotations, total duration of annotation in milliseconds)
+        for tag in ['s', 'p', 'e']:
+            ratings[tag] = Ratings(ratings[tag], int(ratings[tag].seconds.values[-1] * 1e3))
+
+        # first, cut annotations longer than debate_len from their beginnings
+        for tag in ['s', 'p', 'e']:
+            if ratings[tag].len >= debate_len:
+                ratings[tag] = ratings[tag]._replace(values=ratings[tag].values[-int(debate_len // 5e3):].reset_index(drop=True))
+                ratings[tag] = ratings[tag]._replace(len=int((ratings[tag].values.index[-1] + 1) * 5e3))
+        """        
+        # find common timerange for signals
+        sig_start, sig_end = 0, np.inf
+        for sigtype in ['bvp', 'eda', 'temp', 'ecg']:
+            sig_start = int(max(sig_start, debate[sigtype].index[0]))
+            sig_end = int(min(sig_end, debate[sigtype].index[-1]))
+        start_gap = sig_start - debate_start
+        end_gap = debate_end - sig_end
+        sig_len = sig_end - sig_start
+        overlap = min(sig_len, ratings['s'].len, ratings['p'].len, ratings['e'].len)
+
+        # second, cut singals w.r.t. common timerange
+        for sigtype in ['bvp', 'eda', 'temp', 'ecg']:
+            sig = debate[sigtype].loc[lambda x: (x.index >= sig_start) & (x.index < sig_end)]
+            sig.index = sig.index.astype('float64')
+
+            # also adjust start and end points of signals
+            # this is necessary for consistency, as we want our signals within the overlapping duration
+            diff = sig.index[-1] - sig.index[0] - overlap
+            if diff > 0:
+                start_diff = diff * start_gap / (start_gap + end_gap)
+                end_diff = diff * end_gap / (start_gap + end_gap)
+                sig = sig.loc[lambda x: (x.index >= sig.index[0] + start_diff) & (x.index < sig.index[-1] - end_diff)]
+
+            # resample and interpolate only ECG signals as they have issues with some duplicate entries
+            # while the frequency of recorded ECG is 1Hz, there are 1s-intervals where multiple values entered within the period
+            if sigtype == 'ecg':
+                sig.index = pd.DatetimeIndex(sig.index * 1e6)
+                sig = sig.resample('1S').mean()
+                sig.interpolate(method='time', inplace=True)
+                sig.index = sig.index.astype(np.int64) // 1e6
+
+            signals[sigtype] = sig
+            sig_len = min(sig_len, sig.index[-1] - sig.index[0])
+
+        # finally, cut annotations from their beginnings to match their lengths with each other
+        min_len = min([ratings['s'].len, ratings['p'].len, ratings['e'].len])
+        for tag in ['s', 'p', 'e']:
+            if ratings[tag].len > min_len:
+                ratings[tag] = ratings[tag]._replace(values=ratings[tag].values[int((ratings[tag].len - min_len) // 5e3):].reset_index(drop=True))
+                ratings[tag] = ratings[tag]._replace(len=int((ratings[tag].values.index[-1] + 1) * 5e3))
+
+            # and their sides to match their lengths with signals (approximately equal to overlap)
+            diff = (ratings[tag].len - overlap) // 5e3
+            if diff > 0:
+                start_diff = round(diff * start_gap / (start_gap + end_gap))
+                end_diff = round(diff * end_gap / (start_gap + end_gap))
+                start_diff = start_diff + 1 if start_diff != 0 else start_diff
+
+                ratings[tag] = ratings[tag]._replace(values=ratings[tag].values[int(start_diff):len(ratings[tag].values) - int(end_diff)].reset_index(drop=True))
+                ratings[tag] = ratings[tag]._replace(len=int((ratings[tag].values.index[-1] + 1) * 5e3))
+
+        # find the greatest possible number of 5-second segments we can extract
+        # the greatest possible number of segments is the maximum overlap across the length of debate data, self annotations, partner annotations, and external annotations divided by 5
+        num_seg = int(sig_len // 5e3)
+        print(f"{pid}\t{debate_len:>10.0f}\t{sig_len:>10.0f}\t{ratings['s'].len:>10}\t{ratings['p'].len:>10}\t{ratings['e'].len:>10}\t{num_seg:>10}")
+
+        # get segments and save them as json files
+        for i in range(num_seg):
+            s_values = ratings['s'].values.iloc[i]
+            p_values = ratings['p'].values.iloc[i]
+            e_values = ratings['e'].values.iloc[i]
+            s_a, s_v = s_values.arousal, s_values.valence
+            p_a, p_v = p_values.arousal, p_values.valence
+            e_a, e_v = e_values.arousal, e_values.valence
+
+            seg = dict()
+            for sigtype in ['bvp', 'eda', 'temp', 'ecg']:
+                sig = signals[sigtype]
+                start = sig.index[0] + (i * 5e3)
+                seg[sigtype] = sig.loc[lambda x: (x.index >= start) & (x.index < start + 5e3)].tolist()
+            
+            seg_savepath = os.path.join(save_dir, str(pid), f'p{pid:02d}-{i:03d}-{s_a}{s_v}{p_a}{p_v}{e_a}{e_v}.json')
+            with open(seg_savepath, 'w') as f:
+                json.dump(seg, f, sort_keys=True, indent=4)
+                
+    print('-' * 100)
+    return
+    """
 PATHS = {
         'e4_dir': (r'C:\Users\sotir\Documents\thesis\dataset\e4_data'),
         'h7_dir': (r'C:\Users\sotir\Documents\thesis\dataset\neurosky_polar_data'),
         'subjects_info_path':(r'C:\Users\sotir\Documents\thesis\dataset\metadata\subjects.csv'),
-        'baseline_dir': (r'C:\Users\sotir\Documents\thesis\baseline')
+        'baseline_dir': (r'C:\Users\sotir\Documents\thesis\baseline'),
+        'self_ratings_dir': (r'C:\Users\sotir\Documents\thesis\dataset\emotion_annotations\self_annotations'),
+        'partner_ratings_dir': (r'C:\Users\sotir\Documents\thesis\dataset\emotion_annotations\partner_annotations'),
+        'external_ratings_dir': (r'C:\Users\sotir\Documents\thesis\dataset\emotion_annotations\aggregated_external_annotations'),
+        'segments_dir': (r'C:\Users\sotir\Documents\thesis\segments')
         }
 
 VALIDS = [1, 4, 5, 8, 9, 10, 11, 13, 14, 15, 16, 19, 22, 23, 24, 25, 26, 27, 28, 31, 32]
@@ -175,6 +293,7 @@ FILETYPES = ['bvp', 'eda', 'hr', 'ibi', 'temp', 'ecg']                        # 
 
 pid_to_raw_df = aggregate_raw(PATHS, VALIDS)
 pid_to_baseline_raw, pid_to_debate_raw = get_baseline_and_debate(PATHS, VALIDS, FILETYPES, pid_to_raw_df)   
-baseline_to_json(PATHS, pid_to_baseline_raw)  
+#baseline_to_json(PATHS, pid_to_baseline_raw)
+debate_segments_to_json(PATHS, VALIDS, FILETYPES, pid_to_debate_raw)  
      
 
