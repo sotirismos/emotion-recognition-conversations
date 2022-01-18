@@ -164,7 +164,7 @@ def baseline_to_json(paths, pid_to_baseline_raw):
     return
 
 
-def debate_segments_to_json(paths, valid_pids, filetypes, pid_to_debate_raw):
+def debate_segments_to_json(paths, valid_pids, filetypes, pid_to_debate_raw):        
     subject_info_table = pd.read_csv(paths['subjects_info_path'], index_col='pid')
     Ratings = namedtuple('Ratings', ['values', 'len'])
     save_dir = paths['segments_dir']
@@ -198,7 +198,7 @@ def debate_segments_to_json(paths, valid_pids, filetypes, pid_to_debate_raw):
             if ratings[tag].len >= debate_len:
                 ratings[tag] = ratings[tag]._replace(values=ratings[tag].values[-int(debate_len // 5e3):].reset_index(drop=True))
                 ratings[tag] = ratings[tag]._replace(len=int((ratings[tag].values.index[-1] + 1) * 5e3))
-        """        
+                
         # find common timerange for signals
         sig_start, sig_end = 0, np.inf
         for sigtype in ['bvp', 'eda', 'temp', 'ecg']:
@@ -209,7 +209,7 @@ def debate_segments_to_json(paths, valid_pids, filetypes, pid_to_debate_raw):
         sig_len = sig_end - sig_start
         overlap = min(sig_len, ratings['s'].len, ratings['p'].len, ratings['e'].len)
 
-        # second, cut singals w.r.t. common timerange
+        # second, cut signals w.r.t. common timerange
         for sigtype in ['bvp', 'eda', 'temp', 'ecg']:
             sig = debate[sigtype].loc[lambda x: (x.index >= sig_start) & (x.index < sig_end)]
             sig.index = sig.index.astype('float64')
@@ -276,7 +276,8 @@ def debate_segments_to_json(paths, valid_pids, filetypes, pid_to_debate_raw):
                 
     print('-' * 100)
     return
-    """
+
+    
 PATHS = {
         'e4_dir': (r'C:\Users\sotir\Documents\thesis\dataset\e4_data'),
         'h7_dir': (r'C:\Users\sotir\Documents\thesis\dataset\neurosky_polar_data'),
