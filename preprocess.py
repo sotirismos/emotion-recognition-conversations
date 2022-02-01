@@ -277,24 +277,25 @@ def debate_segments_to_json(paths, valid_pids, filetypes, pid_to_debate_raw):
     print('-' * 100)
     return
 
-    
-PATHS = {
-        'e4_dir': (r'C:\Users\sotir\Documents\thesis\dataset\e4_data'),
-        'h7_dir': (r'C:\Users\sotir\Documents\thesis\dataset\neurosky_polar_data'),
-        'subjects_info_path':(r'C:\Users\sotir\Documents\thesis\dataset\metadata\subjects.csv'),
-        'baseline_dir': (r'C:\Users\sotir\Documents\thesis\baseline'),
-        'self_ratings_dir': (r'C:\Users\sotir\Documents\thesis\dataset\emotion_annotations\self_annotations'),
-        'partner_ratings_dir': (r'C:\Users\sotir\Documents\thesis\dataset\emotion_annotations\partner_annotations'),
-        'external_ratings_dir': (r'C:\Users\sotir\Documents\thesis\dataset\emotion_annotations\aggregated_external_annotations'),
-        'segments_dir': (r'C:\Users\sotir\Documents\thesis\segments')
-        }
+if __name__ == '__main__':    
+   
+    PATHS = {
+            'e4_dir': (r'C:\Users\sotir\Documents\thesis\dataset\e4_data'),
+            'h7_dir': (r'C:\Users\sotir\Documents\thesis\dataset\neurosky_polar_data'),
+            'subjects_info_path':(r'C:\Users\sotir\Documents\thesis\dataset\metadata\subjects.csv'),
+            'baseline_dir': (r'C:\Users\sotir\Documents\thesis\baseline'),
+            'self_ratings_dir': (r'C:\Users\sotir\Documents\thesis\dataset\emotion_annotations\self_annotations'),
+            'partner_ratings_dir': (r'C:\Users\sotir\Documents\thesis\dataset\emotion_annotations\partner_annotations'),
+            'external_ratings_dir': (r'C:\Users\sotir\Documents\thesis\dataset\emotion_annotations\aggregated_external_annotations'),
+            'segments_dir': (r'C:\Users\sotir\Documents\thesis\segments')
+            }
 
-VALIDS = [1, 4, 5, 8, 9, 10, 11, 13, 14, 15, 16, 19, 22, 23, 24, 25, 26, 27, 28, 31, 32]
-FILETYPES = ['bvp', 'eda', 'hr', 'ibi', 'temp', 'ecg']                        # 3-axis acceleration is excluded
+    VALIDS = [1, 4, 5, 8, 9, 10, 11, 13, 14, 15, 16, 19, 22, 23, 24, 25, 26, 27, 28, 31, 32]
+    FILETYPES = ['bvp', 'eda', 'hr', 'ibi', 'temp', 'ecg']                        # 3-axis acceleration is excluded
 
-pid_to_raw_df = aggregate_raw(PATHS, VALIDS)
-pid_to_baseline_raw, pid_to_debate_raw = get_baseline_and_debate(PATHS, VALIDS, FILETYPES, pid_to_raw_df)   
-#baseline_to_json(PATHS, pid_to_baseline_raw)
-debate_segments_to_json(PATHS, VALIDS, FILETYPES, pid_to_debate_raw)  
+    pid_to_raw_df = aggregate_raw(PATHS, VALIDS)
+    pid_to_baseline_raw, pid_to_debate_raw = get_baseline_and_debate(PATHS, VALIDS, FILETYPES, pid_to_raw_df)   
+    #baseline_to_json(PATHS, pid_to_baseline_raw)
+    debate_segments_to_json(PATHS, VALIDS, FILETYPES, pid_to_debate_raw)  
      
 
