@@ -25,7 +25,6 @@ def aggregate_raw(paths, valid_pids):
                pid_to_raw_df (dict of int: pandas DataFrame): maps participant IDs to DataFrames containing raw data.
     """
     
-    logger = logging.getLogger('default')
     e4_dir, h7_dir = paths['e4_dir'], paths['h7_dir']
     pid_to_raw_df = {}
 
@@ -88,7 +87,6 @@ def get_baseline_and_debate(paths, valid_pids, filetypes, pid_to_raw_df):
         pid_to_debate_raw (dict of int: (dict of str: pandas Series))
     """
     
-    logger = logging.getLogger('default')
     subject_info_table = pd.read_csv(paths['subjects_info_path'], index_col='pid')
     pid_to_baseline_raw = {pid:dict() for pid in valid_pids}
     pid_to_debate_raw = {pid:dict() for pid in valid_pids}
