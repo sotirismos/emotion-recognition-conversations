@@ -9,7 +9,8 @@ from datetime import datetime
 import numpy as np
 import json
 from collections import namedtuple
-#import argparse
+from utils.logging import LoggingConfig
+#import argparse (skipped for now)
 
 def aggregate_raw(paths, valid_pids):
     
@@ -164,7 +165,8 @@ def baseline_to_json(paths, pid_to_baseline_raw):
     return
 
 
-def debate_segments_to_json(paths, valid_pids, filetypes, pid_to_debate_raw):        
+def debate_segments_to_json(paths, valid_pids, filetypes, pid_to_debate_raw):
+        
     subject_info_table = pd.read_csv(paths['subjects_info_path'], index_col='pid')
     Ratings = namedtuple('Ratings', ['values', 'len'])
     save_dir = paths['segments_dir']
@@ -277,8 +279,9 @@ def debate_segments_to_json(paths, valid_pids, filetypes, pid_to_debate_raw):
     print('-' * 100)
     return
 
-if __name__ == '__main__':    
-   
+
+if __name__ == '__main__':
+    logger = LoggingConfig('info', handler_type='stream').get_logger()
     PATHS = {
             'e4_dir': (r'C:\Users\sotir\Documents\thesis\dataset\e4_data'),
             'h7_dir': (r'C:\Users\sotir\Documents\thesis\dataset\neurosky_polar_data'),
@@ -292,10 +295,23 @@ if __name__ == '__main__':
 
     VALIDS = [1, 4, 5, 8, 9, 10, 11, 13, 14, 15, 16, 19, 22, 23, 24, 25, 26, 27, 28, 31, 32]
     FILETYPES = ['bvp', 'eda', 'hr', 'ibi', 'temp', 'ecg']                        # 3-axis acceleration is excluded
-
+    
+    # aggregate raw data
+    logger.info('Aggregating raw data..')
     pid_to_raw_df = aggregate_raw(PATHS, VALIDS)
-    pid_to_baseline_raw, pid_to_debate_raw = get_baseline_and_debate(PATHS, VALIDS, FILETYPES, pid_to_raw_df)   
-    #baseline_to_json(PATHS, pid_to_baseline_raw)
-    debate_segments_to_json(PATHS, VALIDS, FILETYPES, pid_to_debate_raw)  
+    
+    # get baseline and debate data
+    logger.info('Getting baseline and debate data..')
+    pid_to_baseline_raw, pid_to_debate_raw = get_baseline_and_debate(PATHS, VALIDS, FILETYPES, pid_to_raw_df)
+    
+    # save baseline data as json
+    logger.info(f'Saving baseline as JSON files to {PATHS["baseline_dir"]}...')
+    baseline_to_json(PATHS, pid_to_baseline_raw)
+    
+    # save 5s-segments
+    logger.info(f'Saving debate segments as JSON files to {PATHS["segments_dir"]}...')
+    debate_segments_to_json(PATHS, VALIDS, FILETYPES, pid_to_debate_raw)
+    logger.info('Preprocessing complete')
+    
      
 
