@@ -4,7 +4,6 @@
 
 import os
 import pandas as pd
-import logging
 from datetime import datetime
 import numpy as np
 import json
@@ -99,7 +98,7 @@ def get_baseline_and_debate(paths, valid_pids, filetypes, pid_to_raw_df):
         init_time, start_time, end_time = tuple(subject_info[['initTime', 'startTime', 'endTime']].to_numpy()[0]) # selects row and convets it to a NumPy array
 
         # get baseline interval
-        baseline_td = 2 * 60 * 1e3  # 2 minutes (120s) in milliseconds
+        baseline_td = 2 * 60 * 1e3  # 2 minutes (120s) in milliseconds (beware of 1e3)
         baseline_start, baseline_end = init_time, init_time + baseline_td
         
         # for each filetype
@@ -121,7 +120,7 @@ def get_baseline_and_debate(paths, valid_pids, filetypes, pid_to_raw_df):
                 continue
             else:
                 # try storing data with corresponding filekeys and printing extra information
-                debate_len = datetime.fromtimestamp(max(debate.timestamp) // 1e3) - datetime.fromtimestamp(min(debate.timestamp) // 1e3)
+                debate_len = datetime.fromtimestamp(max(debate.timestamp) // 1e3) - datetime.fromtimestamp(min(debate.timestamp) // 1e3) # //1e3 to convert to seconds
                 pid_to_debate_raw[pid][filetype] = debate.set_index('timestamp').value  # is a series
 
                 # however, baseline data might be missing, so take care of that
@@ -193,13 +192,13 @@ def debate_segments_to_json(paths, valid_pids, filetypes, pid_to_debate_raw):
         for tag in ['s', 'p', 'e']:
             ratings[tag] = Ratings(ratings[tag], int(ratings[tag].seconds.values[-1] * 1e3))
 
-        # first, cut annotations longer than debate_len from their beginnings
+        # first, cut annotations longer than debate_len from their beginnings (1st step)
         for tag in ['s', 'p', 'e']:
             if ratings[tag].len >= debate_len:
                 ratings[tag] = ratings[tag]._replace(values=ratings[tag].values[-int(debate_len // 5e3):].reset_index(drop=True))
                 ratings[tag] = ratings[tag]._replace(len=int((ratings[tag].values.index[-1] + 1) * 5e3))
                 
-        # find common timerange for signals
+        # find common timerange for signals (2nd step) and overlap of signal and all annotations durations (3rd step)
         sig_start, sig_end = 0, np.inf
         for sigtype in ['bvp', 'eda', 'temp', 'ecg']:
             sig_start = int(max(sig_start, debate[sigtype].index[0]))
@@ -214,7 +213,7 @@ def debate_segments_to_json(paths, valid_pids, filetypes, pid_to_debate_raw):
             sig = debate[sigtype].loc[lambda x: (x.index >= sig_start) & (x.index < sig_end)]
             sig.index = sig.index.astype('float64')
 
-            # also adjust start and end points of signals
+            # also adjust start and end points of signals (CODE BELOW NOT DEBUGGED)
             # this is necessary for consistency, as we want our signals within the overlapping duration
             diff = sig.index[-1] - sig.index[0] - overlap
             if diff > 0:
@@ -311,5 +310,3 @@ if __name__ == '__main__':
     debate_segments_to_json(PATHS, VALIDS, FILETYPES, pid_to_debate_raw)
     logger.info('Preprocessing complete')
     
-     
-
