@@ -6,6 +6,10 @@ import json
 #import logging
 from collections import OrderedDict
 
+from pyteap.signals.bvp import acquire_bvp, get_bvp_features
+from pyteap.signals.gsr import acquire_gsr, get_gsr_features
+from pyteap.signals.hst import acquire_hst, get_hst_features
+from pyteap.signals.ecg import get_ecg_features
 
 def load_segments(segments_dir):
     segments = {}
@@ -31,6 +35,16 @@ def load_segments(segments_dir):
     return OrderedDict(sorted(segments.items(), key=lambda x: x[0]))
 
 
+def get_features(sig, sr, sigtype):
+    if sigtype == 'bvp':
+        features = get_bvp_features(acquire_bvp(sig, sr), sr)
+    elif sigtype == 'eda':
+        features = get_gsr_features(acquire_gsr(sig, sr, conversion=1e6), sr)
+    elif sigtype == 'temp':
+        features = get_hst_features(acquire_hst(sig, sr), sr)
+    elif sigtype == 'ecg':
+        features = get_ecg_features(sig)
+    return features
 
 
 if __name__ == "__main__":
