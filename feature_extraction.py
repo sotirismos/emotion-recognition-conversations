@@ -116,15 +116,103 @@ def get_data_rolling(segments, n, labeltype, majority):
     return X, y
 
 
+def get_data_discrete(segments, n, labeltype, majority):
+    X, y = {}, {}
+
+    # for each participant
+    for pid, segs in segments.items():
+        segs = sorted(segs, key=lambda x: x[0])
+        pbar = tqdm(segs, desc=f'For subject {pid:02d}', ascii=True, dynamic_ncols=True)
+
+        curr_X, curr_y, curr_segs = [], [], {}
+        # for each segment
+        for idx, signals, labels in pbar:
+            # get labels and add to buffer
+            s_a, s_v = int(labels[0]), int(labels[1])
+            p_a, p_v = int(labels[2]), int(labels[3])
+            e_a, e_v = int(labels[4]), int(labels[5])
+
+            if labeltype == 's':
+                curr_segs.setdefault('a', []).append(s_a)
+                curr_segs.setdefault('v', []).append(s_v)
+            elif labeltype == 'p':
+                curr_segs.setdefault('a', []).append(p_a)
+                curr_segs.setdefault('v', []).append(p_v)
+            elif labeltype == 'e':
+                curr_segs.setdefault('a', []).append(e_a)
+                curr_segs.setdefault('v', []).append(e_v)
+            elif labeltype == 'sp':
+                curr_segs.setdefault('a', []).append(np.sum([s_a, p_a]))
+                curr_segs.setdefault('v', []).append(np.sum([s_v, p_v]))
+
+            # get signals and add to buffer
+            for sigtype, sr in [('bvp', 64), ('eda', 4), ('temp', 4), ('ecg', 1)]:
+                curr_segs.setdefault(sigtype, []).append(signals[sigtype])
+
+                # if n segments are in buffer
+                if len(curr_segs[sigtype]) == n:
+                    # concat signals and get features
+                    sig = np.concatenate(curr_segs.pop(sigtype))
+                    features = get_features(sig, sr, sigtype)
+                    curr_segs.setdefault('features', []).append(features)
+
+            # if features are in the buffer, pop features and labels
+            if 'features' in curr_segs:
+                features = np.concatenate(curr_segs.pop('features'))
+                # skip if one or more feature is NaN
+                if np.isnan(features).any():
+                    logger.warning('One or more feature is NaN, skipped.')
+                    continue
+
+                # take majority label
+                if majority:
+                    a_values, a_counts = np.unique(curr_segs.pop('a'), return_counts=True)
+                    v_values, v_counts = np.unique(curr_segs.pop('v'), return_counts=True)
+                    a_val = a_values[np.argmax(a_counts)]
+                    v_val = v_values[np.argmax(v_counts)]
+                # or take label of the last segment
+                else:
+                    a_val = curr_segs.pop('a')[-1]
+                    v_val = curr_segs.pop('v')[-1]
+                
+                curr_X.append(features)
+                if labeltype != 'sp':
+                    curr_y.append([int(a_val), int(v_val)])
+                else:
+                    curr_y.append([int(a_val), int(v_val)])
+
+                pbar.set_postfix({'processed': idx // n})
+
+        # stack features for current participant and apply standardization
+        X[pid] = StandardScaler().fit_transform(np.stack(curr_X))
+        y[pid] = np.stack(curr_y)
+
+    return X, y
+
+
+def prepare_kemocon(segments_dir, n, labeltype, majority, rolling):
+       
+    # load segments
+    pid_to_segments = load_segments(segments_dir)
+
+    # extract features and labels
+    if rolling:
+        X, y = get_data_rolling(pid_to_segments, n, labeltype, majority)
+    else:
+        X, y = get_data_discrete(pid_to_segments, n, labeltype, majority)
+
+    return X, y
+
+
 if __name__ == "__main__":
     logger = LoggingConfig('info', handler_type='stream').get_logger()
 
     INFO = {
             'segments_dir': (r'C:\Users\sotir\Documents\thesis\segments'),
             'label' : 'sp',     # type of label to use for classification, must be either "s"=self, "p"=partner, "e"=external, or "sp"=self+partner (default="s")
-            'length': 5,       # number of consecutive 5s-signals in one segment, default is 5
-            'majority': True, # set majority label for segments, default is last
-            'rolling' : True   # get segments with rolling: e.g., s1=[0:n], s2=[1:n+1], ..., default is no rolling: e.g., s1=[0:n], s2=[n:2n], ...')
+            'length': 5,        # number of consecutive 5s-signals in one segment, default is 5
+            'majority': True,   # set majority label for segments, default is last
+            'rolling' : True    # get segments with rolling: e.g., s1=[0:n], s2=[1:n+1], ..., default is no rolling: e.g., s1=[0:n], s2=[n:2n], ...')
             }
     
     # filter these RuntimeWarning messages
@@ -133,6 +221,6 @@ if __name__ == "__main__":
     warnings.filterwarnings(action='ignore', message='divide by zero encountered in true_divide')
     warnings.filterwarnings(action='ignore', message='invalid value encountered in subtract')
     
-    segments = load_segments(INFO['segments_dir'])
-    X,y = get_data_rolling(segments, INFO['length'], INFO['label'], INFO['majority'])
+    X,y = prepare_kemocon(INFO['segments_dir'], INFO['length'], INFO['label'], INFO['majority'], INFO['rolling'])
+
 
