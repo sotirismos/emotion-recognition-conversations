@@ -8,8 +8,11 @@ from tqdm import tqdm
 import numpy as np
 from utils.logging import LoggingConfig
 from collections import OrderedDict
+#import pandas as pd
+import pickle
 
 from sklearn.preprocessing import StandardScaler
+#from sklearn.model_selection import StratifiedKFold
 
 from pyteap.signals.bvp import acquire_bvp, get_bvp_features
 from pyteap.signals.gsr import acquire_gsr, get_gsr_features
@@ -51,9 +54,7 @@ def get_features(sig, sr, sigtype):
         features = get_ecg_features(sig)
     return features
 
-
-def get_data_rolling(segments, n, labeltype, majority):
-
+def get_features_rolling(segments, n, labeltype, majority):
 
     X, y = {}, {}
 
@@ -115,8 +116,7 @@ def get_data_rolling(segments, n, labeltype, majority):
 
     return X, y
 
-
-def get_data_discrete(segments, n, labeltype, majority):
+def get_features_discrete(segments, n, labeltype, majority):
     X, y = {}, {}
 
     # for each participant
@@ -177,9 +177,9 @@ def get_data_discrete(segments, n, labeltype, majority):
                 
                 curr_X.append(features)
                 if labeltype != 'sp':
-                    curr_y.append([int(a_val), int(v_val)])
+                    curr_y.append([int(a_val>2), int(v_val>2)])
                 else:
-                    curr_y.append([int(a_val), int(v_val)])
+                    curr_y.append([int(a_val>5), int(v_val>5)])
 
                 pbar.set_postfix({'processed': idx // n})
 
@@ -189,30 +189,38 @@ def get_data_discrete(segments, n, labeltype, majority):
 
     return X, y
 
-
-def prepare_kemocon(segments_dir, n, labeltype, majority, rolling):
+def prepare_features_kemocon(segments_dir, n, labeltype, majority, rolling):
        
     # load segments
     pid_to_segments = load_segments(segments_dir)
 
     # extract features and labels
     if rolling:
-        X, y = get_data_rolling(pid_to_segments, n, labeltype, majority)
+        X, y = get_features_rolling(pid_to_segments, n, labeltype, majority)
     else:
-        X, y = get_data_discrete(pid_to_segments, n, labeltype, majority)
+        X, y = get_features_discrete(pid_to_segments, n, labeltype, majority)
 
-    return X, y
-
+    with open('C:\\Users\\sotir\\Documents\\thesis\\segments\\features.pickle', 'wb') as handle:
+         pickle.dump(X, handle, protocol=pickle.HIGHEST_PROTOCOL)
+         
+    with open('C:\\Users\\sotir\\Documents\\thesis\\segments\\labels.pickle', 'wb') as handle:
+         pickle.dump(y, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 if __name__ == "__main__":
     logger = LoggingConfig('info', handler_type='stream').get_logger()
 
     INFO = {
             'segments_dir': (r'C:\Users\sotir\Documents\thesis\segments'),
-            'label' : 'sp',     # type of label to use for classification, must be either "s"=self, "p"=partner, "e"=external, or "sp"=self+partner (default="s")
-            'length': 5,        # number of consecutive 5s-signals in one segment, default is 5
-            'majority': True,   # set majority label for segments, default is last
-            'rolling' : True    # get segments with rolling: e.g., s1=[0:n], s2=[1:n+1], ..., default is no rolling: e.g., s1=[0:n], s2=[n:2n], ...')
+            'label' : 's',       # type of label to use for classification, must be either "s"=self, "p"=partner, "e"=external, or "sp"=self+partner (default="s")
+            'length': 5,          # number of consecutive 5s-signals in one segment, default is 5
+            'majority': True,     # set majority label for segments, default is last
+            'rolling' : False,    # get segments with rolling: e.g., s1=[0:n], s2=[1:n+1], ..., default is no rolling: e.g., s1=[0:n], s2=[n:2n], ...')
+            'seed': 2300,         # seed for random number generator, default is 0
+            'cv': 'kfold',        # type of cross-validation to perform, must be either ''kfold'' or ''loso''
+            'splits': 4,          # number of folds for the k-fold stratified classification
+            'shuffle': True,     # shuffle data before splitting to folds, default is no shuffle
+            'target' : 'valence', # target label for classification
+            'save_dir': (r'C:\Users\sotir\Documents\thesis\data')
             }
     
     # filter these RuntimeWarning messages
@@ -221,6 +229,5 @@ if __name__ == "__main__":
     warnings.filterwarnings(action='ignore', message='divide by zero encountered in true_divide')
     warnings.filterwarnings(action='ignore', message='invalid value encountered in subtract')
     
-    X,y = prepare_kemocon(INFO['segments_dir'], INFO['length'], INFO['label'], INFO['majority'], INFO['rolling'])
-
+    prepare_features_kemocon(INFO['segments_dir'], INFO['length'], INFO['label'], INFO['majority'], INFO['rolling'])
 
