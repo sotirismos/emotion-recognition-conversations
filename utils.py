@@ -50,3 +50,14 @@ class LoggingConfig(object):
             path = '/'.join(filepath.split('/')[:-1])
             if not os.path.exists(path):
                 os.makedirs(path)
+                
+def transform_label(target, pos_label):
+    def transform_fn(a, v):
+        if target == 'arousal':
+            return int(a > 3) if pos_label == 'high' else int(a <= 3)
+        else:
+            return int(v > 2) if pos_label == 'high' else int(v <= 2)
+
+    return transform_fn
+
+
