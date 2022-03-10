@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 from scipy.signal import decimate
 from scipy.interpolate import interp1d
-from collections import OrderedDict
+from collections import OrderedDict, Counter
 from sklearn.preprocessing import StandardScaler
 from pyteap.signals import bvp, gsr, hst, ecg
 
@@ -15,11 +15,9 @@ import torch
 import pytorch_lightning as pl
 from torch.utils.data import TensorDataset, random_split, DataLoader
 
-
 class KEMOCONDataModule(pl.LightningDataModule):
     
-
-    def __init__(self, config):
+    def __init__(self, config, label_fn=None):
         
         super().__init__()
         assert config['label_type'] in {'self', 'partner', 'external'}
@@ -28,7 +26,8 @@ class KEMOCONDataModule(pl.LightningDataModule):
         self.sample_rates       = [64, 4, 4, 1]
 
         self.data_dir           = config['data_dir']
-        self.save_dir           = config['save_dir'] 
+        self.save_dir           = config['save_dir'] if config['save_dir'] is not None else None
+        self.load_dir           = config['load_dir'] if config['load_dir'] is not None else None
         #self.batch_size         = config['batch_size']
         self.label_type         = config['label_type']
         self.n_classes          = config['n_classes']
@@ -39,10 +38,15 @@ class KEMOCONDataModule(pl.LightningDataModule):
         self.extract_features   = config['extract_features']
         self.standardize        = config['standardize']
         self.fusion             = config['fusion']
+        self.label_fn           = label_fn
 
         if self.resample and self.extract_features:
             warnings.warn('Resampling and feature extraction are mutually exclusive (cannot extract features from downsampled BVP signals), extract_features will be set to false.', UserWarning)
             self.extract_features = False
+        
+        if self.load_dir and self.save_dir:
+            warnings.warn('Loading and saving processed features mutually exclusive, save_dir wiil be set to None', UserWarning)
+            self.save_dir = None
 
     def get_features(self, sig, sr, sigtype):
         if sigtype == 'bvp':
@@ -55,14 +59,25 @@ class KEMOCONDataModule(pl.LightningDataModule):
             features = ecg.get_ecg_features(sig)
         return features
 
-    def prepare_data(self, check_id=False):
-     
-        # Note: prepare_data is called from a single GPU. Do not use it to assign state (self.x = y)
+    def prepare_data(self):
+        
+        # load previously processed segments from load_dir
+        if self.load_dir is not None:
+            print(f'{self.load_dir}')
+            with open(self.load_dir, 'rb') as handle:
+                processed = pickle.load(handle)
+            print(f'Loaded processed segments from {self.load_dir}.')
+
+            # get loaded segments(OrderedDict) and skip the rest(return None, check bugs on bookmarks)
+            self.processed = processed
+            return processed
+        
+        # Note: prepare_data is called from a single GPU. Do not use it to assign state (self.x = y) (From their doc)
         # load raw data from data_dir
         pid_to_segments = dict()
-
+        
         # for each participant
-        for pid in sorted(map(int, os.listdir(self.data_dir))):
+        for pid in sorted(map(int, os.listdir(self.data_dir))):            
             pid_to_segments.setdefault(pid, list())
             segments = pid_to_segments[pid]
 
@@ -79,8 +94,12 @@ class KEMOCONDataModule(pl.LightningDataModule):
                     a, v = int(labels[2]), int(labels[3])
                 elif self.label_type == 'external':
                     a, v = int(labels[4]), int(labels[5])
-                # set labels
-                label = (a, v)
+                    
+                # Transform labels using label_fn if given. Then, set labels.
+                if self.label_fn is not None:
+                    label = self.label_fn(a,v)
+                else:
+                    label = (a, v)
 
                 # get signals (5s long)
                 with open(os.path.join(pdir, segname)) as f:
@@ -94,7 +113,13 @@ class KEMOCONDataModule(pl.LightningDataModule):
 
             # sort list of segments by index
             segments.sort(key=lambda x: x[0])
-
+            
+            # check label distribution: if the number of unique classes for the current participant does not equal n_classes,
+            # remove current participant from the dataset as such participant's data cannot be used for testing
+            if self.label_fn is not None and len(Counter(map(lambda x: x[-1], segments))) != self.n_classes:
+                del pid_to_segments[pid]
+                continue
+            
             # concat N = num_segs segments (each 5s) via a rolling method
             curr_x = list()
             for i in range(len(segments) - self.num_segs + 1):
@@ -102,7 +127,7 @@ class KEMOCONDataModule(pl.LightningDataModule):
                 segs = segments[i:i + self.num_segs]  
                 # concat segments for each signal type
                 seg = {sigtype: np.concatenate([seg[sigtype] for _, seg, _ in segs]) for sigtype in self.sigtypes}
-                # take the label of the last segment
+                # take the label of the last segment (consider taking the label of the majority)
                 curr_x.append([i, seg, segs[-1][-1]])  
 
             # apply up/downsampling - upsample ECG (=heart rate) and downsample bvp
@@ -154,23 +179,24 @@ class KEMOCONDataModule(pl.LightningDataModule):
 
             # save processed segments to dict
             pid_to_segments[pid] = curr_x
-
+            
         # sort pid_to_segments by pid
         processed = OrderedDict(sorted(pid_to_segments.items(), key=lambda x: x[0]))
 
         # pickle processed segments to save_dir
-        if not check_id and self.save_dir is not None:
+        if self.save_dir is not None:
             with open(self.save_dir, 'wb') as handle:
                 pickle.dump(processed, handle, protocol=pickle.HIGHEST_PROTOCOL)
             print(f'Saved processed segments to {self.save_dir}.')
-
-        # return dict of processed segments sorted by pid
+            
+        # get loaded segments(OrderedDict) and return None
+        self.processed = processed
         return processed
 
-    def setup(self, stage='fit', test_id=None):
-        # setup expects a string arg stage. It is used to separate setup logic for trainer.fit and trainer.test.
+    def setup(self, stage=None, test_id=None):
+        # setup expects a string arg stage. It is used to separate setup logic for trainer.fit and trainer.test. (From their doc)
         # assign train/val split(s) for use in dataloaders
-        data = self.prepare_data()
+        data = self.processed
         self.size_ = sum(len(data[pid]) for pid in data)  # total number of samples in the dataset
         
         # for loso cross-validation
@@ -191,7 +217,7 @@ class KEMOCONDataModule(pl.LightningDataModule):
                 )
                 self.dims = tuple(self.kemocon_train[0][0].shape)
         
-        # test id is None, we are doing standard train/valid/test split
+        # test id is None, we are doing standard train/valid/test split (holdout cross-validation)
         # given val_size which is a float between 0 and 1 defining the proportion of validation set
         # validation and test sets will have the same size of val_size * full dataset, and train set will be the rest of the dataset
         else:
@@ -231,19 +257,22 @@ class KEMOCONDataModule(pl.LightningDataModule):
 if __name__ == '__main__':
     
     config = {
-        'data_dir': 'C:\\Users\\sotir\\Documents\\thesis\\segments',
-        'save_dir': 'C:\\Users\\sotir\\Documents\\thesis\\features\\av60.pkl',
+        'data_dir': (r'C:\Users\sotir\Documents\thesis\segments'),
+        'save_dir': (r'C:\Users\sotir\Documents\thesis\features\av25.pkl'),
+        'load_dir': None,
         'label_type': 'self',
         'batch_size': 2000,
         'n_classes': 2,
         'val_size': 0.1,
-        'num_segs': 12,
-        'resample': True,
-        'extract_features': False,
+        'num_segs': 5,
+        'resample': False,
+        'extract_features': True,
         'standardize': True,
         'fusion': 'stack',
     }
 
     KEMOCONDataModule(
-        config = config
-    )
+        config = config,
+        label_fn = None
+        )
+
