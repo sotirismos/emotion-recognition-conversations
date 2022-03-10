@@ -196,6 +196,7 @@ class KEMOCONDataModule(pl.LightningDataModule):
     def setup(self, stage=None, test_id=None):
         # setup expects a string arg stage. It is used to separate setup logic for trainer.fit and trainer.test. (From their doc)
         # assign train/val split(s) for use in dataloaders
+        self.prepare_data()
         data = self.processed
         self.size_ = sum(len(data[pid]) for pid in data)  # total number of samples in the dataset
         
