@@ -30,7 +30,7 @@ config = {
             },
         'hparams': {
             'bst':{
-                'booster': 'xgbtree',
+                'booster': 'gbtree',
                 'verbosity': 1,
                 'learning_rate': 0.3,
                 'min_split_loss': 0,

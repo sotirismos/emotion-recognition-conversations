@@ -9,7 +9,7 @@ from xgboost import DMatrix
 import torch
 #import torch.nn.functional as F
 import pytorch_lightning as pl
-from pytorch_lightning.core.decorators import auto_move_data
+#from pytorch_lightning.core.decorators import auto_move_data
 
 from torch import nn
 #from torch.utils.data import DataLoader, random_split
@@ -134,9 +134,9 @@ class XGBoost(object):
 
     def train(self, x, y, model=None):
         self.bst = xgb.train(
-            params          = vars(self.hparams.bst),
+            params          = (self.hparams['bst']),
             dtrain          = DMatrix(x, label=y),
-            num_boost_round = self.hparams.num_rounds,
+            num_boost_round = self.hparams['num_rounds'],
             xgb_model       = model
         )
 
