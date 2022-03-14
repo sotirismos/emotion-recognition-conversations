@@ -6,7 +6,7 @@ import os
 import json
 from tqdm import tqdm
 import numpy as np
-from utils.logging import LoggingConfig
+from utils import LoggingConfig
 from collections import OrderedDict
 #import pandas as pd
 import pickle
