@@ -8,11 +8,9 @@ from tqdm import tqdm
 import numpy as np
 from utils import LoggingConfig
 from collections import OrderedDict
-#import pandas as pd
 import pickle
 
 from sklearn.preprocessing import StandardScaler
-#from sklearn.model_selection import StratifiedKFold
 
 from pyteap.signals.bvp import acquire_bvp, get_bvp_features
 from pyteap.signals.gsr import acquire_gsr, get_gsr_features
@@ -41,7 +39,6 @@ def load_segments(segments_dir):
 
     # return dict sorted by pid
     return OrderedDict(sorted(segments.items(), key=lambda x: x[0]))
-
 
 def get_features(sig, sr, sigtype):
     if sigtype == 'bvp':
@@ -207,19 +204,14 @@ def prepare_features_kemocon(segments_dir, n, labeltype, majority, rolling):
          pickle.dump(y, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 if __name__ == "__main__":
+    
     logger = LoggingConfig('info', handler_type='stream').get_logger()
-
     INFO = {
             'segments_dir': (r'C:\Users\sotir\Documents\thesis\segments'),
-            'label' : 's',       # type of label to use for classification, must be either "s"=self, "p"=partner, "e"=external, or "sp"=self+partner (default="s")
+            'label' : 's',        # type of label to use for classification, must be either "s"=self, "p"=partner, "e"=external, or "sp"=self+partner (default="s")
             'length': 5,          # number of consecutive 5s-signals in one segment, default is 5
-            'majority': True,     # set majority label for segments, default is last
-            'rolling' : False,    # get segments with rolling: e.g., s1=[0:n], s2=[1:n+1], ..., default is no rolling: e.g., s1=[0:n], s2=[n:2n], ...')
-            'seed': 2300,         # seed for random number generator, default is 0
-            'cv': 'kfold',        # type of cross-validation to perform, must be either ''kfold'' or ''loso''
-            'splits': 4,          # number of folds for the k-fold stratified classification
-            'shuffle': True,     # shuffle data before splitting to folds, default is no shuffle
-            'target' : 'valence', # target label for classification
+            'majority': False,     # set majority label for segments, default is last
+            'rolling' : True,    # get segments with rolling: e.g., s1=[0:n], s2=[1:n+1], ..., default is no rolling: e.g., s1=[0:n], s2=[n:2n], ...')
             'save_dir': (r'C:\Users\sotir\Documents\thesis\data')
             }
     

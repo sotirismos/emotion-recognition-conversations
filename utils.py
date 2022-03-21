@@ -6,7 +6,6 @@ import logging
 import os
 from typing import Union, TextIO
 
-
 class LoggingConfig(object):
     __logger = logging.getLogger(__name__)
     root = None
@@ -54,7 +53,7 @@ class LoggingConfig(object):
 def transform_label(target, pos_label):
     def transform_fn(a, v):
         if target == 'arousal':
-            return int(a > 3) if pos_label == 'high' else int(a <= 3)
+            return int(a > 2) if pos_label == 'high' else int(a <= 2)
         else:
             return int(v > 2) if pos_label == 'high' else int(v <= 2)
 

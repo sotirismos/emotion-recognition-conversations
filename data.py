@@ -28,7 +28,7 @@ class KEMOCONDataModule(pl.LightningDataModule):
         self.data_dir           = config['data_dir']
         self.save_dir           = config['save_dir'] if config['save_dir'] is not None else None
         self.load_dir           = config['load_dir'] if config['load_dir'] is not None else None
-        #self.batch_size         = config['batch_size']
+        self.batch_size         = config['batch_size']
         self.label_type         = config['label_type']
         self.n_classes          = config['n_classes']
         self.val_size           = config['val_size']
@@ -45,7 +45,7 @@ class KEMOCONDataModule(pl.LightningDataModule):
             self.extract_features = False
         
         if self.load_dir and self.save_dir:
-            warnings.warn('Loading and saving processed features mutually exclusive, save_dir wiil be set to None', UserWarning)
+            warnings.warn('Loading and saving processed features mutually exclusive, save_dir will be set to None', UserWarning)
             self.save_dir = None
 
     def get_features(self, sig, sr, sigtype):
@@ -63,7 +63,6 @@ class KEMOCONDataModule(pl.LightningDataModule):
         
         # load previously processed segments from load_dir
         if self.load_dir is not None:
-            print(f'{self.load_dir}')
             with open(self.load_dir, 'rb') as handle:
                 processed = pickle.load(handle)
             print(f'Loaded processed segments from {self.load_dir}.')
@@ -72,7 +71,7 @@ class KEMOCONDataModule(pl.LightningDataModule):
             self.processed = processed
             return processed
         
-        # Note: prepare_data is called from a single GPU. Do not use it to assign state (self.x = y) (From their doc)
+        # Note: prepare_data is called from a single GPU. Do not use it to assign state (self.x = y) (From LightningDataModule doc)
         # load raw data from data_dir
         pid_to_segments = dict()
         
@@ -97,7 +96,7 @@ class KEMOCONDataModule(pl.LightningDataModule):
                     
                 # Transform labels using label_fn if given. Then, set labels.
                 if self.label_fn is not None:
-                    label = self.label_fn(a,v)
+                    label = self.label_fn(a, v)
                 else:
                     label = (a, v)
 
@@ -204,8 +203,7 @@ class KEMOCONDataModule(pl.LightningDataModule):
         if test_id is not None:
             if stage == 'test' or stage is None:
                 inp, tgt = zip(*[(torch.Tensor(seg), label) for _, seg, label in data[test_id]])
-                self.kemocon_test = TensorDataset(torch.stack(inp), torch.Tensor(tgt).unsqueeze(1))
-                self.dims = tuple(self.kemocon_test[0][0].shape)
+                self.kemocon_test = TensorDataset(torch.stack(inp), torch.Tensor(tgt).unsqueeze(1))                
 
             if stage == 'fit' or stage is None:
                 inp, tgt = zip(*[(torch.Tensor(seg), label) for pid in data if pid != test_id for _, seg, label in data[pid]])
@@ -216,7 +214,6 @@ class KEMOCONDataModule(pl.LightningDataModule):
                     lengths     = [len(kemocon_full) - n_val, n_val],
                     generator   = torch.Generator(),
                 )
-                self.dims = tuple(self.kemocon_train[0][0].shape)
         
         # test id is None, we are doing standard train/valid/test split (holdout cross-validation)
         # given val_size which is a float between 0 and 1 defining the proportion of validation set
@@ -232,12 +229,10 @@ class KEMOCONDataModule(pl.LightningDataModule):
             )
 
             if stage == 'fit' or stage is None:
-                self.kemocon_train, self.kemocon_val = train, valid
-                self.dims = tuple(self.kemocon_train[0][0].shape)
+                self.kemocon_train, self.kemocon_val = train, valid            
             
             if stage == 'test' or stage is None:
                 self.kemocon_test = test
-                self.dims = tuple(self.kemocon_test[0][0].shape)
                 
     def train_dataloader(self):
         return DataLoader(self.kemocon_train, batch_size=self.batch_size)
@@ -259,21 +254,27 @@ if __name__ == '__main__':
     
     config = {
         'data_dir': (r'C:\Users\sotir\Documents\thesis\segments'),
-        'save_dir': (r'C:\Users\sotir\Documents\thesis\features\av25.pkl'),
+        'save_dir': (r'C:\Users\sotir\Documents\thesis\features\arousal-60.pkl'),
         'load_dir': None,
         'label_type': 'self',
         'batch_size': 2000,
         'n_classes': 2,
         'val_size': 0.1,
-        'num_segs': 5,
+        'num_segs': 12,
         'resample': False,
         'extract_features': True,
         'standardize': True,
         'fusion': 'stack',
     }
+    
+    # filter these RuntimeWarning messages
+    warnings.filterwarnings(action='ignore', message='Mean of empty slice')
+    warnings.filterwarnings(action='ignore', message='invalid value encountered in double_scalars')
+    warnings.filterwarnings(action='ignore', message='divide by zero encountered in true_divide')
+    warnings.filterwarnings(action='ignore', message='invalid value encountered in subtract')
 
     KEMOCONDataModule(
         config = config,
         label_fn = None
-        )
+        ).prepare_data()
 
