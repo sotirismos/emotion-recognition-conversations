@@ -222,4 +222,10 @@ if __name__ == "__main__":
     warnings.filterwarnings(action='ignore', message='invalid value encountered in subtract')
     
     prepare_features_kemocon(INFO['segments_dir'], INFO['length'], INFO['label'], INFO['majority'], INFO['rolling'])
+    
+    
+    
+    
+    
+
 

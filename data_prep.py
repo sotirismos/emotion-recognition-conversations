@@ -38,7 +38,7 @@ class KEMOCONDataModule(pl.LightningDataModule):
         self.extract_features   = config['extract_features']
         self.standardize        = config['standardize']
         self.fusion             = config['fusion']
-        self.label_fn           = label_fn
+        self.label_fn           =  label_fn
 
         if self.resample and self.extract_features:
             warnings.warn('Resampling and feature extraction are mutually exclusive (cannot extract features from downsampled BVP signals), extract_features will be set to false.', UserWarning)
@@ -115,9 +115,9 @@ class KEMOCONDataModule(pl.LightningDataModule):
             
             # check label distribution: if the number of unique classes for the current participant does not equal n_classes,
             # remove current participant from the dataset as such participant's data cannot be used for testing
-            if self.label_fn is not None and len(Counter(map(lambda x: x[-1], segments))) != self.n_classes:
-                del pid_to_segments[pid]
-                continue
+            #if self.label_fn is not None and len(Counter(map(lambda x: x[-1], segments))) != self.n_classes:
+            #    del pid_to_segments[pid]
+            #    continue
             
             # concat N = num_segs segments (each 5s) via a rolling method
             curr_x = list()
@@ -219,6 +219,15 @@ class KEMOCONDataModule(pl.LightningDataModule):
         # given val_size which is a float between 0 and 1 defining the proportion of validation set
         # validation and test sets will have the same size of val_size * full dataset, and train set will be the rest of the dataset
         else:
+            # If we consider to change the LSTM architecture 
+            #inp = {}
+            #tgt = {}
+            #for pid in data:
+            #    inp[pid] = []
+            #    tgt[pid] = []
+            #    for _, seg, label in data[pid]:
+            #        inp[pid].append(torch.Tensor(seg))
+            #        tgt[pid].append(torch.Tensor(label))
             inp, tgt = zip(*[(torch.Tensor(seg), label) for pid in data for _, seg, label in data[pid]])
             kemocon_full = TensorDataset(torch.stack(inp), torch.Tensor(tgt).unsqueeze(1))
             n_val = int(self.val_size * len(kemocon_full))
@@ -226,7 +235,7 @@ class KEMOCONDataModule(pl.LightningDataModule):
                 dataset     = kemocon_full,
                 lengths     = [len(kemocon_full) - (n_val * 2), n_val, n_val],
                 generator   = torch.Generator(),
-            )
+                )
 
             if stage == 'fit' or stage is None:
                 self.kemocon_train, self.kemocon_val = train, valid            
@@ -235,13 +244,13 @@ class KEMOCONDataModule(pl.LightningDataModule):
                 self.kemocon_test = test
                 
     def train_dataloader(self):
-        return DataLoader(self.kemocon_train, batch_size=self.batch_size)
+        return DataLoader(self.kemocon_train, batch_size=self.batch_size, num_workers=4)
 
     def val_dataloader(self):
-        return DataLoader(self.kemocon_val, batch_size=self.batch_size)
+        return DataLoader(self.kemocon_val, batch_size=self.batch_size, num_workers=4)
 
     def test_dataloader(self):
-        return DataLoader(self.kemocon_test, batch_size=self.batch_size)
+        return DataLoader(self.kemocon_test, batch_size=self.batch_size, num_workers=4)
 
     def trainval_dataset(self):
         # returns train + valid as a TensorDataset
@@ -254,15 +263,15 @@ if __name__ == '__main__':
     
     config = {
         'data_dir': (r'C:\Users\sotir\Documents\thesis\segments'),
-        'save_dir': (r'C:\Users\sotir\Documents\thesis\features\arousal-60.pkl'),
+        'save_dir': (r'C:\Users\sotir\Documents\thesis\raw_signal\a25.pkl'),
         'load_dir': None,
         'label_type': 'self',
         'batch_size': 2000,
         'n_classes': 2,
         'val_size': 0.1,
-        'num_segs': 12,
-        'resample': False,
-        'extract_features': True,
+        'num_segs': 5,
+        'resample': True,
+        'extract_features': False,
         'standardize': True,
         'fusion': 'stack',
     }
@@ -276,5 +285,5 @@ if __name__ == '__main__':
     KEMOCONDataModule(
         config = config,
         label_fn = None
-        ).prepare_data()
-
+        ).setup()
+    

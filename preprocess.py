@@ -68,7 +68,6 @@ def aggregate_raw(paths, valid_pids):
 
     return pid_to_raw_df
 
-
 def get_baseline_and_debate(paths, valid_pids, filetypes, pid_to_raw_df):
     
     """
@@ -134,7 +133,6 @@ def get_baseline_and_debate(paths, valid_pids, filetypes, pid_to_raw_df):
     print('-' * 80)
     return pid_to_baseline_raw, pid_to_debate_raw
 
-
 def baseline_to_json(paths, pid_to_baseline_raw):
     save_dir = paths['baseline_dir']
     # create a new directory if there isn't one already
@@ -160,7 +158,6 @@ def baseline_to_json(paths, pid_to_baseline_raw):
             json.dump(baseline, f, sort_keys=True, indent=4)
 
     return
-
 
 def debate_segments_to_json(paths, valid_pids, filetypes, pid_to_debate_raw):
         
@@ -310,3 +307,25 @@ if __name__ == '__main__':
     debate_segments_to_json(PATHS, VALIDS, FILETYPES, pid_to_debate_raw)
     logger.info('Preprocessing complete')
     
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+    
+  
+
+
+
+
+

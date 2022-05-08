@@ -1,6 +1,6 @@
 """
 @author: Kaist-ICLab/Sotiris
-"""
+""" 
 import os
 import json
 import pandas as pd
@@ -10,13 +10,17 @@ import warnings
 os.chdir(r'C:\Users\sotir\Documents\thesis')
 from data_prep import KEMOCONDataModule
 from utils import transform_label 
-from models import XGBoost, LSTM
+from models import LSTM, SVM, XGBoost, Att_LSTM
 
 # import pytorch related stuff
 import torch
 
 # import pytorch-lightning related stuff
 import pytorch_lightning as pl
+from pytorch_lightning.loggers import TensorBoardLogger
+from pytorch_lightning.callbacks import LearningRateMonitor
+from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+
 
 class Experiment(object):
     
@@ -40,37 +44,99 @@ class Experiment(object):
         os.makedirs(self.config['exp']['savedir'], exist_ok=True)
 
         # set path to save experiment results
-        self.savepath = os.path.join(self.config['exp']['savedir'], f'{self.exp_name}.json')        
+        self.savepath = os.path.join(self.config['exp']['savedir'], f'{self.exp_name}.json')
+        
+    def init_logger(self, pid):
+        # set version number if needed
+        version = '' if pid is None else f'_{pid:02d}'
+
+        # make logger
+        logger = TensorBoardLogger(
+            save_dir    = self.config['logger']['logdir'],
+            version     = version,
+            name        = f'{self.exp_name}'
+        )
+        return logger
 
     def init_model(self, hparams):
         if self.config['exp']['model'] == 'xgboost':
             model = XGBoost(hparams)
         elif self.config['exp']['model'] == 'lstm':
             model = LSTM(hparams)
-    
+        elif self.config['exp']['model'] == 'svm':
+            model = SVM(hparams)
+        elif self.config['exp']['model'] == 'att_lstm':
+            model = Att_LSTM(hparams)
+            
         return model
 
-    def body(self, pid=None):
+    def _body(self, pid=None):
         # init model
         self.model = self.init_model(self.config['hparams'])
 
         # setup datamodule
         self.dm.setup(stage=None, test_id=None)
 
-        # train model: concat train and valid inputs and labels and convert torch tensors to numpy arrays
-        X_train, y_train = map(lambda x: torch.cat(x, dim=0).numpy(), zip(self.dm.kemocon_train[:], self.dm.kemocon_val[:]))
-        self.model.train(X_train, y_train)
+        # init training with pl.LightningModule models
+        if self.config['trainer'] is not None:
+            # init logger
+            if self.config['logger'] is not None:
+                logger = self.init_logger(pid=None)
 
-        # test model
-        X_test, y_test = map(lambda x: x.numpy(), self.dm.kemocon_test[:])
-        metr, cm = self.model.test(X_test, y_test)
+            # init lr monitor and callbacks
+            callbacks = list()
+            if self.config['hparams']['scheduler'] is not None:
+                callbacks.append(LearningRateMonitor(logging_interval='epoch'))
+
+            # init early stopping
+            if self.config['early_stop'] is not None:
+                callbacks.append(EarlyStopping(**self.config['early_stop']))
+
+            # make trainer
+            trainer_args = self.config['trainer']
+            trainer_args.update({
+                'logger': logger,
+                'callbacks': callbacks,
+                'auto_lr_find': True if self.config['exp']['tune'] else False
+            })
+            trainer = pl.Trainer(**trainer_args)
+
+            # find optimal lr
+            if self.config['exp']['tune']:
+                trainer.tune(self.model, datamodule=self.dm)
+            
+            # train model
+            trainer.fit(self.model, self.dm)
+
+            # test model and get results
+            [results] = trainer.test(self.model, self.dm)
+
+            # return metrics and confusion matrices
+            metr = {
+                'pid': pid,
+                'acc': results['test_acc'],
+                'ap': results['test_ap'],
+                'f1': results['test_f1'],
+                'auroc': results['test_auroc'],
+                'num_epochs': self.model.current_epoch,
+            }
+            cm = self.model.cm
+        
+        else:
+            # train model: concat train and valid inputs and labels and convert torch tensors to numpy arrays
+            X_train, y_train = map(lambda x: torch.cat(x, dim=0).numpy(), zip(self.dm.kemocon_train[:], self.dm.kemocon_val[:]))
+            self.model.train(X_train, y_train)
+
+            # test model
+            X_test, y_test = map(lambda x: x.numpy(), self.dm.kemocon_test[:])
+            metr, cm = self.model.test(X_test, y_test)
 
         return metr, cm
 
     def run(self):
         # run holdout validation
         if self.config['exp']['type'] == 'holdout':
-            metr, cm = self.body()
+            metr, cm = self._body()
             results = {
                 'config': self.config,
                 'metrics': metr,
@@ -108,9 +174,9 @@ class Experiment(object):
 if __name__ == "__main__":
     
     # Opening JSON file
-    with open(r'C:\Users\sotir\Documents\thesis\configs\xgb_holdout.json', 'r') as f:
+    with open(r'C:\Users\sotir\Documents\thesis\configs\svm_holdout.json', 'r') as f:
         config = json.load(f)
-      
+    
     # filter these RuntimeWarning messages
     warnings.filterwarnings(action='ignore', message='Mean of empty slice')
     warnings.filterwarnings(action='ignore', message='invalid value encountered in double_scalars')
@@ -120,3 +186,4 @@ if __name__ == "__main__":
     # run experiment with configuration
     exp = Experiment(config)
     exp.run()    
+    
