@@ -17,3 +17,4 @@ JSON files for biosignal segments will have names with the following pattern: fo
 
 The last 6 digits are multiperspective emotion annotations associated with the segment, in the order of 1) self-arousal, 2) self-valence, 3) partner-arousal, 4) partner-valence, 5) external-arousal, and 6) external-valence.
 
+#### Thesis full report (Greek) is available [online](https://ikee.lib.auth.gr/record/340502/?ln=en)
