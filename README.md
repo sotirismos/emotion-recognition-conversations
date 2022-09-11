@@ -17,4 +17,44 @@ JSON files for biosignal segments will have names with the following pattern: fo
 
 The last 6 digits are multiperspective emotion annotations associated with the segment, in the order of 1) self-arousal, 2) self-valence, 3) partner-arousal, 4) partner-valence, 5) external-arousal, and 6) external-valence.
 
+#### Classification results
+
+**SVM**
+
+| Affect | Annotation perspective    | Accuracy    | F1-Score    | AUROC    |
+| :---:   | :---: | :---: | :---: | :---: |
+| Arousal | Self   | 0.679   | 0.6059    | 0.6257    |
+| Arousal | Partner   | 0.6953   | 0.619    | 0.65    |
+| Valence | Self   | 0.7565   | 0.70999    | 0.675    |
+| Valence | Partner   | 0.76   | 0.7105    | 0.683    |
+
+**XGBoost**
+
+| Affect | Annotation perspective    | Accuracy    | F1-Score    | AUROC    |
+| :---:   | :---: | :---: | :---: | :---: |
+| Arousal | Self   | 0.786   | 0.772    | 0.8672    |
+| Arousal | Partner   | 0.812   | 0.7984    | 0.879    |
+| Valence | Self   | 0.81   | 0.814    | 0.8055    |
+| Valence | Partner   | 0.805   | 0.8103    | 0.8164    |
+
+**LSTM**
+
+| Affect | Annotation perspective    | Accuracy    | F1-Score    | AUROC    |
+| :---:   | :---: | :---: | :---: | :---: |
+| Arousal | Self   | 0.822   | 0.8235    | 0.882    |
+| Arousal | Partner   | 0.8402   | 0.834    | 0.8973    |
+| Valence | Self   | 0.8351   | 0.8202    | 0.8152    |
+| Valence | Partner   | 0.8302   | 0.8258    | 0.8243    |
+
+**Attention-based LSTM**
+
+| Affect | Annotation perspective    | Accuracy    | F1-Score    | AUROC    |
+| :---:   | :---: | :---: | :---: | :---: |
+| Arousal | Self   | 0.8777   | 0.915    | 0.905    |
+| Arousal | Partner   | 0.903   | 0.9323    | 0.9241    |
+| Valence | Self   | 0.9185   | 0.9165    | 0.9423    |
+| Valence | Partner   | 0.9154   | 0.9133    | 0.9391    |
+
 #### Thesis full report (Greek) is available [online](https://ikee.lib.auth.gr/record/340502/?ln=en)
+
+
